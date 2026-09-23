@@ -1,0 +1,48 @@
+name: Collect and deploy school board
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --ignore-scripts
+      - run: npm test
+      - name: Restore last successful source data
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: school-data-${{ github.run_id }}
+          restore-keys: school-data-
+      - run: node --use-system-ca collector.mjs
+      - run: node build-pages.mjs
+      - name: Retain source data for recovery
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: school-data-${{ github.run_id }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

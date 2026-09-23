@@ -1,0 +1,1 @@
+{"name":"goejeong-school-board","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node --use-system-ca server.mjs","collect":"node --use-system-ca collector.mjs","test":"node --test"},"dependencies":{"cheerio":"1.1.2"},"engines":{"node":">=24"}}

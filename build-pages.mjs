@@ -1,0 +1,12 @@
+import {mkdir,readFile,writeFile,copyFile} from 'node:fs/promises';
+import {readCache} from './collector.mjs';
+import {dayKey,recent,todayMeals} from './public/date.mjs';
+const data=await readCache();
+if(!Object.values(data.sources).some(s=>s.lastSuccess))throw Error('No successfully collected data; refusing to publish an empty board');
+data.meals=todayMeals(data.meals);data.notices=data.notices.filter(x=>recent(x.date));data.competitions=data.competitions.filter(x=>recent(x.date));data.today=dayKey();
+await mkdir('dist',{recursive:true});
+const html=(await readFile('public/index.html','utf8')).replace('href="/style.css"','href="./style.css"').replace('src="/app.mjs"','src="./app.mjs"');
+const app=(await readFile('public/app.mjs','utf8')).replace("fetch('/api/board'","fetch('./board.json'").replace('30분마다 수집','30분 주기 수집 예약');
+await writeFile('dist/index.html',html);await writeFile('dist/app.mjs',app);await writeFile('dist/board.json',JSON.stringify(data));await writeFile('dist/.nojekyll','');
+for(const file of ['date.mjs','style.css'])await copyFile('public/'+file,'dist/'+file);
+console.log('Pages build ready: dist/');
