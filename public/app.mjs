@@ -17,7 +17,7 @@ $('next').onclick=()=>move(1);$('prev').onclick=()=>move(-1);$('pause').onclick=
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('.tab').forEach(t=>{t.classList.toggle('active',t===b);t.setAttribute('aria-pressed',t===b);});buildSlides();});
 $('lunch').onclick=()=>{mealIndex=0;renderMeals();};$('dinner').onclick=()=>{mealIndex=1;renderMeals();};
 $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{$('fullscreen').title='브라우저의 전체 화면 기능을 사용해 주세요';}};
-let mealTick=0;setInterval(()=>{clock();if(!paused&&!document.hidden){elapsed++;$('progress').style.width=Math.min(elapsed/20*100,100)+'%';if(elapsed>=20)move(1);mealTick++;if(mealTick>=10){mealTick=0;const meals=data.meals.filter(m=>m.date===dayKey());if(meals.some(m=>m.type==='중식')&&meals.some(m=>m.type==='석식')){mealIndex++;renderMeals();}}}},1000);
+let mealTick=0;setInterval(()=>{clock();if(!paused&&!document.hidden){elapsed++;$('progress').style.width=Math.min(elapsed/7*100,100)+'%';if(elapsed>=7)move(1);mealTick++;if(mealTick>=10){mealTick=0;const meals=data.meals.filter(m=>m.date===dayKey());if(meals.some(m=>m.type==='중식')&&meals.some(m=>m.type==='석식')){mealIndex++;renderMeals();}}}},1000);
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(buildSlides,200);});document.fonts.ready.then(()=>{if(slides.length)buildSlides();});clock();renderWeek();load();setInterval(load,60000);
 
 
