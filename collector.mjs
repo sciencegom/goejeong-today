@@ -2,7 +2,7 @@ import {load} from 'cheerio';
 import {mkdir,readFile,writeFile,rename} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
-import {dayKey,shiftDay,recent,todayMeals} from './public/date.mjs';
+import {dayKey,shiftDay,recent,recentStart,todayMeals} from './public/date.mjs';
 export const schoolInfo='https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=8a51e0e3-7675-451e-8dfc-64f72264cef0';
 const school='https://goejeonghs.djsch.kr';
 const directory=resolve(process.env.DATA_DIR || 'data');
@@ -24,7 +24,7 @@ export function parseDetail(html){const $=load(html);const box=$('.viewBox');if(
 async function board(boardID,menu){let items=[], recognized=false;for(let page=1;page<=30;page++){
  const html=await (await request(school+`/boardCnts/list.do?boardID=${boardID}&m=${menu}&s=goejeonghs&page=${page}`)).text();const parsed=parseList(html,boardID,menu);recognized ||= parsed.all.length>0;
  if(!parsed.all.length){if(!recognized)throw Error('게시판 목록 구조를 확인할 수 없습니다');break;}items.push(...parsed.selected);
- if(parsed.all.some(x=>x.date<shiftDay(dayKey(),-6)))break;
+ if(parsed.all.some(x=>x.date<recentStart()))break;
  if(page===30)throw Error('게시판 조회 페이지 한도 초과');
  }
  const unique=[...new Map(items.map(x=>[x.id,x])).values()];
