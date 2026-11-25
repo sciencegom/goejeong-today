@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화장실 전자담배 감지 모니터</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Malgun Gothic", sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; border-bottom:1px solid #334155; flex-wrap:wrap; gap:8px; }
+  h1 { font-size:20px; margin:0; }
+  #conn { font-size:14px; color:var(--muted); }
+  main { padding:24px; max-width:1200px; margin:0 auto; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:16px; }
+  .card { background:var(--card); border-radius:12px; padding:16px; border:2px solid transparent; }
+  .card.alarm { border-color:var(--bad); background:#450a0a; animation: pulse .6s infinite alternate; }
+  .card.offline { opacity:.55; }
+  .card h2 { font-size:17px; margin:0 0 8px; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:13px; font-weight:700; }
+  .b-ok { background:#14532d; color:#86efac; } .b-bad { background:var(--bad); color:#fff; }
+  .b-off { background:#334155; color:#cbd5e1; } .b-warm { background:#78350f; color:#fde68a; }
+  .vals { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:12px; font-size:14px; color:var(--muted); }
+  .vals b { color:var(--text); font-size:18px; }
+  h3 { margin:32px 0 8px; font-size:16px; }
+  ul#history { list-style:none; padding:0; margin:0; font-size:14px; color:var(--muted); }
+  ul#history li { padding:6px 0; border-bottom:1px solid #334155; }
+  .empty { color:var(--muted); }
+
+  /* 전체 화면 경보 */
+  #alarm { position:fixed; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+           text-align:center; gap:16px; padding:24px; z-index:10; animation: flash .5s infinite alternate; }
+  #alarm.on { display:flex; }
+  #alarm .big { font-size:clamp(32px, 7vw, 80px); font-weight:900; }
+  #alarm .loc { font-size:clamp(24px, 5vw, 56px); font-weight:800; }
+  #alarm button { font-size:20px; padding:12px 32px; border-radius:10px; border:0; background:#fff; color:#b91c1c; font-weight:800; cursor:pointer; }
+  @keyframes flash { from { background:rgba(220,38,38,.95); } to { background:rgba(127,29,29,.95); } }
+  @keyframes pulse { from { box-shadow:0 0 0 0 rgba(239,68,68,.7); } to { box-shadow:0 0 24px 6px rgba(239,68,68,.7); } }
+
+  /* 시작 화면 (브라우저는 클릭 전엔 소리를 막기 때문에 필요) */
+  #start { position:fixed; inset:0; background:rgba(15,23,42,.97); display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:16px; z-index:20; text-align:center; padding:24px; }
+  #start button { font-size:22px; padding:14px 40px; border-radius:12px; border:0; background:var(--ok); color:#052e16; font-weight:800; cursor:pointer; }
+  .tools { display:flex; gap:8px; }
+  .tools button { background:#334155; color:var(--text); border:0; border-radius:8px; padding:6px 12px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="start">
+  <h1>화장실 전자담배 감지 모니터</h1>
+  <p>경보음이 나도록 아래 버튼을 한 번 눌러 주세요.</p>
+  <button id="startBtn">모니터링 시작</button>
+</div>
+
+<div id="alarm" role="alert">
+  <div class="big">🚨 전자담배 감지! 🚨</div>
+  <div class="loc" id="alarmLoc"></div>
+  <div id="alarmInfo"></div>
+  <button id="ackBtn">확인 (경보음 끄기)</button>
+</div>
+
+<header>
+  <h1>🚻 화장실 공기질 모니터</h1>
+  <div class="tools">
+    <span id="conn">서버 연결 중…</span>
+    <button id="testBtn" title="소리와 점멸 확인">경보 테스트</button>
+  </div>
+</header>
+<main>
+  <div class="grid" id="grid"><p class="empty">아직 연결된 센서가 없습니다.</p></div>
+  <h3>최근 감지 기록</h3>
+  <ul id="history"><li class="empty">기록 없음</li></ul>
+</main>
+
+<script>
+// ---------- 경보음 (Web Audio API로 사이렌 생성, 음원 파일 불필요) ----------
+let ctx = null, sirenTimer = null;
+function beep() {
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = "square";
+  o.frequency.setValueAtTime(880, t);
+  o.frequency.linearRampToValueAtTime(1320, t + 0.25);
+  o.frequency.linearRampToValueAtTime(880, t + 0.5);
+  g.gain.setValueAtTime(0.25, t);
+  g.gain.setValueAtTime(0, t + 0.5);
+  o.connect(g).connect(ctx.destination);
+  o.start(t); o.stop(t + 0.5);
+}
+function startSiren() {
+  if (!ctx || sirenTimer) return;
+  beep(); sirenTimer = setInterval(beep, 600);
+}
+function stopSiren() { clearInterval(sirenTimer); sirenTimer = null; }
+
+// ---------- 화면 ----------
+const acked = new Map();   // device_id → 확인 버튼 누른 시점의 alarm_since
+let testMode = false, lastState = { devices: [], history: [] };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const fmt = (ms) => new Date(ms).toLocaleTimeString("ko-KR");
+const num = (v, u) => (v === undefined || v === null || v < 0) ? "-" : `${Math.round(v)}${u}`;
+
+function render(state) {
+  lastState = state;
+  const grid = document.getElementById("grid");
+  if (!state.devices.length) grid.innerHTML = '<p class="empty">아직 연결된 센서가 없습니다.</p>';
+  else grid.innerHTML = state.devices
+    .sort((a, b) => (b.alarm - a.alarm) || a.location.localeCompare(b.location, "ko"))
+    .map((d) => {
+      const cls = !d.online ? "offline" : d.alarm ? "alarm" : "";
+      const badge = !d.online ? '<span class="badge b-off">연결 끊김</span>'
+        : d.alarm ? '<span class="badge b-bad">현재 감지됨!</span>'
+        : d.warming_up ? '<span class="badge b-warm">예열 중</span>'
+        : '<span class="badge b-ok">정상</span>';
+      return `<div class="card ${cls}">
+        <h2>${esc(d.location)}</h2>${badge}
+        <div class="vals">
+          <div>TVOC<br><b>${num(d.tvoc, " ppb")}</b></div>
+          <div>PM2.5<br><b>${num(d.pm25, " ㎍/㎥")}</b></div>
+          <div>온도 ${num(d.temp, "℃")}</div><div>습도 ${num(d.humid, "%")}</div>
+          <div style="grid-column:span 2">마지막 보고 ${fmt(d.last_seen)}</div>
+        </div></div>`;
+    }).join("");
+
+  document.getElementById("history").innerHTML = state.history.length
+    ? state.history.map((h) => `<li>${fmt(h.time)} · <b>${esc(h.location)}</b> · TVOC ${num(h.tvoc, "ppb")}, PM2.5 ${num(h.pm25, "")}</li>`).join("")
+    : '<li class="empty">기록 없음</li>';
+
+  updateAlarm();
+}
+
+function updateAlarm() {
+  const active = lastState.devices.filter((d) => d.online && d.alarm && acked.get(d.device_id) !== d.alarm_since);
+  const box = document.getElementById("alarm");
+  if (active.length || testMode) {
+    document.getElementById("alarmLoc").textContent = testMode ? "테스트 경보입니다" : active.map((d) => d.location).join(", ");
+    document.getElementById("alarmInfo").textContent = testMode ? "" :
+      active.map((d) => `${d.location}: TVOC ${num(d.tvoc, "ppb")} / ${fmt(d.alarm_since)}부터`).join("  ·  ");
+    box.classList.add("on");
+    document.title = "🚨 감지! " + (testMode ? "테스트" : active[0].location);
+    startSiren();
+  } else {
+    box.classList.remove("on");
+    document.title = "화장실 전자담배 감지 모니터";
+    stopSiren();
+  }
+}
+
+document.getElementById("ackBtn").onclick = () => {
+  testMode = false;
+  // 확인한 경보는 다시 울리지 않음. 새로 감지되면(alarm_since가 바뀌면) 다시 울림
+  for (const d of lastState.devices) if (d.alarm) acked.set(d.device_id, d.alarm_since);
+  updateAlarm();
+};
+document.getElementById("testBtn").onclick = () => { testMode = true; updateAlarm(); };
+document.getElementById("startBtn").onclick = () => {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  document.getElementById("start").remove();
+  updateAlarm();
+};
+
+// ---------- 서버 실시간 연결 (끊기면 브라우저가 자동 재연결) ----------
+const es = new EventSource("/events");
+const conn = document.getElementById("conn");
+es.addEventListener("state", (e) => { conn.textContent = "● 실시간 연결됨"; conn.style.color = "var(--ok)"; render(JSON.parse(e.data)); });
+es.onerror = () => { conn.textContent = "● 서버 연결 끊김 (재연결 중)"; conn.style.color = "var(--bad)"; };
+</script>
+</body>
+</html>
